@@ -19,19 +19,71 @@ type Timetag struct {
     uint32 Frac
 }
 
+type MidiMsg uint8[4]
+
 type OscType byte
 
 type Arg interface {
-    Type() OscType
-    GetChar() uint8
-    GetDouble() float64
-    GetFloat() float32
-    GetInt64() int64
-    GetInt32() int32
-    GetMidiMsg() uint8[4]
-    GetSymbol() string
-    GetString() string
-    GetTimetag() Timetag
+    GetType() OscType
+    GetValue() interface{}
+}
+
+type SymbolType string
+
+func (this *SymbolType) GetType() OscType {
+    return Symbol
+}
+
+func (this *SymbolType) GetValue interface{} {
+    return *this
+}    
+
+type InfinitumType interface{}
+
+func (this *InfinitumType) GetType() OscType {
+    return Infinitum
+}
+
+func (this *InfinitumType) GetValue interface{} {
+    return nil
+}    
+
+type goTypeWrapper struct {
+    Arg
+    value interface{} 
+}
+
+func (this *goTypeWrapper) GetType() o OscType {
+    switch i := (*this).(type) {
+    case int32:
+        o = Int32
+    case float32:
+        o = Float32
+    case string:
+        o = String
+    case Blob:
+        o = BlobCode
+    case int64:
+        o = Int64
+    case Timetag:
+        o = TimetagCode
+    case float64:
+        o = Double
+        // no way to automatically detect symbols!
+    case byte:
+        o = Char
+    case MidiMsg:
+        o = MidiMsgCode
+    case bool:
+        if bool(*this) {
+            o = True
+        } else {
+            o = False
+        }
+    case nil:
+        o = Nil
+        // no way to detect infinitum
+    }
 }
 
 const (
@@ -41,25 +93,23 @@ const (
     )
 
 const (
-    Int32 = 'i'
-    Float = 'f'
-    String = 's'
-    Blob = 'b'
-    Int64 = 'h'
-    Timetag = 't'
-    Double = 'd'
-    Symbol = 'S'
-    Char = 'c'
-    MidiMsg = 'm'
-    True = 'T'
-    False = 'F'
-    Nil = 'N'
-    Infinitum = 'I'
+    Int32 OscType = 'i'
+    Float OscType = 'f'
+    String OscType = 's'
+    BlobCode OscType = 'b'
+    Int64 OscType = 'h'
+    TimetagCode OscType = 't'
+    Double OscType = 'd'
+    Symbol OscType = 'S'
+    Char OscType = 'c'
+    MidiMsgCode OscType = 'm'
+    True OscType = 'T'
+    False OscType = 'F'
+    Nil OscType = 'N'
+    Infinitum OscType = 'I'
 )
-    
-    
 
-var Now = Timetag{0,1}
+const Now = Timetag{0,1}
 
 /* opaque address type */
 type Address struct {
@@ -131,7 +181,7 @@ func (this *Address) Errstr() string {
 
 func (this *Address) Free() {
     if (this.dead) {
-        panic("Method called on dead object")
+        return
     }
     C.lo_address_free(this.lo_address)
     this.lo_address = nil
@@ -141,29 +191,31 @@ func (this *Address) Free() {
 /* Why go through a bunch of junk to use the lo blob type? Just make a byte slice and call lo_blob_new when we add it to a message */
 type Blob []byte
 
-type Message struct {
-    lo_message unsafe.Pointer
-    dead bool
-}
-
-func NewMessage() (ret *Message) {
-    ret.dead = false
-    lo_message = C.lo_message_new()
-    runtime.SetFinalizer(ret, (*Message).Free)
-    return
-}
-
-func (this *Message) Free() {
-    this.dead = true
-    C.lo_message_free(this.lo_message)
-}
-
-func (this *Message) Add(arg Arg) int {
-    
+/* why use the message type before it's time to send it? */
+type Message []Arg
  
-func Send(targ Address, path string, args ...Arg) ret int {
-    msg := NewMessage(args)
-}    
+func (this *Message) Send(targ Address, path string) ret int {
+    ret = this.SendTimestamped(targ, Now, path)
+}
+
+func (this *Message) SendTimestamped(targ Address, time Timetag, path string) ret int {
+    // build a new lo_message
+    m := C.lo_message_new()
+    defer C.lo_message_free(unsafe.Pointer(m))
+    for _, arg := range m {
+        switch arg.GetType() {
+        case Int32:
+            C.lo_message_add_int32(m, int32(arg.GetValue()))
+        case Float:
+            C.lo_message_add_float(m, float32(arg.GetValue()))
+        case Blob:
+            b := C.lo_message_blob_new(len(Blob(arg)), unsafe.Pointer(arg))
+            defer C.lo_blob_free(unsafe.Pointer(b))
+            C.lo_message_add_blob(m, b)
+        case:
+            
+    }
+}
     
 type Bundle struct {
     lo_address unsafe.Pointer
