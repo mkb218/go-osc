@@ -16,7 +16,7 @@ message arg type, can act as int32, int64, float, double, char, unsigned char, u
  */
 
 type Timetag struct {
-    Sec, Frac _Ctypedef_uint32_t
+    Sec, Frac C.uint32_t
 }
 
 type MidiMsg [4]uint8
@@ -114,7 +114,7 @@ var Now = Timetag{0,1}
 
 /* opaque address type */
 type Address struct {
-    lo_address _Ctypedef_lo_address
+    lo_address C.lo_address
     dead bool
 }
 
@@ -227,9 +227,9 @@ func (this *Message) build_lo_message() (m C.lo_message, ret int) {
     for _, arg := range *this {
         switch arg.GetType() {
         case Int32:
-            ret = int(C.lo_message_add_int32(m, _Ctypedef_int32_t(arg.GetValue().(int32))))
+            ret = int(C.lo_message_add_int32(m, C.int32_t(arg.GetValue().(int32))))
         case Float:
-            ret = int(C.lo_message_add_float(m, _Ctype_float(arg.GetValue().(float32))))
+            ret = int(C.lo_message_add_float(m, C.float(arg.GetValue().(float32))))
         case BlobCode:
             a, i := arg.GetValue().(Blob)
             if !i {
@@ -237,19 +237,19 @@ func (this *Message) build_lo_message() (m C.lo_message, ret int) {
                 break
             }
             
-            b := C.lo_blob_new(_Ctypedef_int32_t(len(a)), unsafe.Pointer(&a))
+            b := C.lo_blob_new(C.int32_t(len(a)), unsafe.Pointer(&a))
             if b == nil {
                 ret = -1
                 break
             }
-            defer C.lo_blob_free(_Ctypedef_lo_blob(b))
+            defer C.lo_blob_free(C.lo_blob(b))
             ret = int(C.lo_message_add_blob(m, b))
         case Int64:
-            ret = int(C.lo_message_add_int64(m, _Ctypedef_int64_t(arg.GetValue().(int64))))
+            ret = int(C.lo_message_add_int64(m, C.int64_t(arg.GetValue().(int64))))
         case TimetagCode:
             ret = int(C.lo_message_add_timetag(m, C.lo_timetag{arg.GetValue().(Timetag).Sec, arg.GetValue().(Timetag).Frac}))
         case Double:
-            ret = int(C.lo_message_add_double(m, _Ctype_double(arg.GetValue().(float64))))
+            ret = int(C.lo_message_add_double(m, C.double(arg.GetValue().(float64))))
         case Symbol: 
             s := C.CString(arg.GetValue().(string))
             if s == nil {
