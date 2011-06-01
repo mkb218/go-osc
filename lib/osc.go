@@ -51,10 +51,21 @@ func (this *InfinitumType) GetValue() interface{} {
 type goTypeWrapper struct {
     Arg
     value interface{} 
+    vtype OscType
 }
 
-func (this *goTypeWrapper) GetType() (o OscType) {
-    switch i := this.value.(type) {
+func (this *goTypeWrapper) GetType() OscType {
+    return this.vtype
+}
+
+func (this *goTypeWrapper) GetValue() (interface{}) {
+    return this.value
+}
+
+func newWrapper(in interface{}) (out *goTypeWrapper) {
+    out = new(goTypeWrapper)
+    var o OscType
+    switch i := in.(type) {
     case int32:
         o = Int32
     case float32:
@@ -75,7 +86,7 @@ func (this *goTypeWrapper) GetType() (o OscType) {
     case MidiMsg:
         o = MidiMsgCode
     case bool:
-        if i, _ := this.value.(bool); i {
+        if ii, _ := in.(bool); ii {
             o = True
         } else {
             o = False
@@ -83,7 +94,11 @@ func (this *goTypeWrapper) GetType() (o OscType) {
     case nil:
         o = Nil
         // no way to detect infinitum
+    default:
+        return nil
     }
+    out.value = in
+    out.vtype = o
     return
 }
 
@@ -196,6 +211,15 @@ type Blob []byte
 /* why use the message type before it's time to send it? */
 type Message []Arg
  
+func (this *Message) Add(e interface{}) (out *Message) {
+    ee := newWrapper(e)
+    if ee != nil {
+        m := append(*this, ee)
+        return &m
+    }
+    return this
+}
+
 func (this *Message) Send(targ *Address, path string) (ret int) {
     ret = this.SendTimestamped(targ, Now, path)
     return
