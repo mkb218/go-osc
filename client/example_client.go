@@ -16,6 +16,7 @@ func main() {
 
 	p := "7770"
 	t := osc.NewAddress(nil, &p)
+	fmt.Printf("%s %v\n", p, t)
 
 	quit := flag.Bool("q", false, "")
 

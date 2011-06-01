@@ -7,6 +7,7 @@ import "C"
 
 import (
     "unsafe"
+    "fmt"
     "runtime"
     )
 
@@ -14,12 +15,6 @@ import (
 timetag type
 message arg type, can act as int32, int64, float, double, char, unsigned char, uint8[4], and timetag
  */
-
-type Timetag struct {
-    Sec, Frac C.uint32_t
-}
-
-type MidiMsg [4]uint8
 
 type OscType byte
 
@@ -30,76 +25,117 @@ type Arg interface {
 
 type SymbolType string
 
-func (this *SymbolType) GetType() OscType {
+func (this SymbolType) GetType() OscType {
     return Symbol
 }
 
-func (this *SymbolType) GetValue() (interface{}) {
-    return *this
+func (this SymbolType) GetValue() (interface{}) {
+    return this
 }    
 
 type InfinitumType struct{}
 
-func (this *InfinitumType) GetType() OscType {
+func (this InfinitumType) GetType() OscType {
     return Infinitum
 }
 
-func (this *InfinitumType) GetValue() interface{} {
+func (this InfinitumType) GetValue() interface{} {
     return nil
 }    
 
-type goTypeWrapper struct {
-    Arg
-    value interface{} 
-    vtype OscType
+type Int32Type int32
+
+func (this Int32Type) GetType() OscType {
+    return Int32
 }
 
-func (this *goTypeWrapper) GetType() OscType {
-    return this.vtype
+func (this Int32Type) GetValue() interface{} {
+    return this
 }
 
-func (this *goTypeWrapper) GetValue() (interface{}) {
-    return this.value
+type FloatType float32
+
+func (this FloatType) GetType() OscType {
+    return Float
 }
 
-func newWrapper(in interface{}) (out *goTypeWrapper) {
-    out = new(goTypeWrapper)
-    var o OscType
-    switch i := in.(type) {
-    case int32:
-        o = Int32
-    case float32:
-        o = Float
-    case string:
-        o = String
-    case Blob:
-        o = BlobCode
-    case int64:
-        o = Int64
-    case Timetag:
-        o = TimetagCode
-    case float64:
-        o = Double
-        // no way to automatically detect symbols!
-    case byte:
-        o = Char
-    case MidiMsg:
-        o = MidiMsgCode
-    case bool:
-        if ii, _ := in.(bool); ii {
-            o = True
-        } else {
-            o = False
-        }
-    case nil:
-        o = Nil
-        // no way to detect infinitum
-    default:
-        return nil
+func (this FloatType) GetValue() interface{} {
+    return this
+}
+
+type Blob []byte
+
+func (this Blob) GetType() OscType {
+    return BlobCode
+}
+
+func (this Blob) GetValue() interface{} {
+    return this
+}
+type Int64Type int64
+
+func (this Int64Type) GetType() OscType {
+    return Int64
+}
+
+func (this Int64Type) GetValue() interface{} {
+    return this
+}
+
+type Timetag struct {
+    Sec, Frac C.uint32_t
+}
+
+func (this Timetag) GetType() OscType {
+    return TimetagCode
+}
+
+func (this Timetag) GetValue() interface{} {
+    return this
+}
+
+type StringType string
+
+func (this StringType) GetType() OscType {
+    return String
+}
+
+func (this StringType) GetValue() interface{} {
+    return this
+}
+
+type CharType byte
+
+func (this CharType) GetType() OscType {
+    return Char
+}
+
+func (this CharType) GetValue() interface{} {
+    return this
+}
+
+type DoubleType float64
+
+func (this DoubleType) GetType() OscType {
+    return Double
+}
+
+func (this DoubleType) GetValue() interface{} {
+    return this
+}
+
+type MidiMsg [4]uint8
+
+func (this MidiMsgCodeType) GetType() OscType {
+    return MidiMsgCode
+}
+
+func (this MidiMsgCodeType) GetValue() interface{} {
+    var out uint32
+    for i, r := range this {
+        out = out | (r << (3 - i))
     }
-    out.value = in
-    out.vtype = o
-    return
+    return out
 }
 
 const (
@@ -135,13 +171,24 @@ type Address struct {
 
 func NewAddress(host, port *string) (ret *Address) {
     ret = new(Address)
+    fmt.Println("new")
     ret.dead = false
-    chost := C.CString(*host)
-    defer C.free(unsafe.Pointer(chost))
-    cport := C.CString(*port)
-    defer C.free(unsafe.Pointer(cport))
+    fmt.Println("dead")
+    var chost, cport *C.char = nil, nil
+    if host != nil {
+        fmt.Println("host")
+        chost = C.CString(*host)
+        defer C.free(unsafe.Pointer(chost))
+    }   
+    if port != nil {
+        fmt.Println("port")
+        cport = C.CString(*port)
+        defer C.free(unsafe.Pointer(cport))
+    }
     ret.lo_address = C.lo_address_new(chost, cport)
+    fmt.Println("newaddress")
     runtime.SetFinalizer(ret, (*Address).Free)
+    fmt.Println("setfinalizer")
     return
 }
 
@@ -205,27 +252,15 @@ func (this *Address) Free() {
     this.dead = true
 }
 
-/* Why go through a bunch of junk to use the lo blob type? Just make a byte slice and call lo_blob_new when we add it to a message */
-type Blob []byte
-
 /* why use the message type before it's time to send it? */
 type Message []Arg
  
-func (this *Message) Add(e interface{}) (out *Message) {
-    ee := newWrapper(e)
-    if ee != nil {
-        m := append(*this, ee)
-        return &m
-    }
-    return this
-}
-
-func (this *Message) Send(targ *Address, path string) (ret int) {
+func (this Message) Send(targ *Address, path string) (ret int) {
     ret = this.SendTimestamped(targ, Now, path)
     return
 }
 
-func (this *Message) SendTimestamped(targ *Address, time Timetag, path string) (ret int) {
+func (this Message) SendTimestamped(targ *Address, time Timetag, path string) (ret int) {
     // build a new lo_message
     m, ret := this.build_lo_message()
     if m == nil {
@@ -242,7 +277,7 @@ func (this *Message) SendTimestamped(targ *Address, time Timetag, path string) (
     return
 }
 
-func (this *Message) build_lo_message() (m C.lo_message, ret int) {
+func (this Message) build_lo_message() (m C.lo_message, ret int) {
     m = C.lo_message_new()
     if m == nil { 
         ret = -1
@@ -309,7 +344,7 @@ func (this *Message) build_lo_message() (m C.lo_message, ret int) {
     
 type MsgPath struct {
     Path string
-    Msg *Message
+    Msg Message
 }
     
 type Bundle struct {
