@@ -7,7 +7,7 @@ import "C"
 
 import (
     "unsafe"
-    "fmt"
+//    "fmt"
     "runtime"
     )
 
@@ -126,14 +126,14 @@ func (this DoubleType) GetValue() interface{} {
 
 type MidiMsg [4]uint8
 
-func (this MidiMsgCodeType) GetType() OscType {
+func (this MidiMsg) GetType() OscType {
     return MidiMsgCode
 }
 
-func (this MidiMsgCodeType) GetValue() interface{} {
+func (this MidiMsg) GetValue() interface{} {
     var out uint32
     for i, r := range this {
-        out = out | (r << (3 - i))
+        out = out | (uint32(r) << uint(3 - i))
     }
     return out
 }
@@ -171,24 +171,18 @@ type Address struct {
 
 func NewAddress(host, port *string) (ret *Address) {
     ret = new(Address)
-    fmt.Println("new")
     ret.dead = false
-    fmt.Println("dead")
     var chost, cport *C.char = nil, nil
     if host != nil {
-        fmt.Println("host")
         chost = C.CString(*host)
         defer C.free(unsafe.Pointer(chost))
     }   
     if port != nil {
-        fmt.Println("port")
         cport = C.CString(*port)
         defer C.free(unsafe.Pointer(cport))
     }
     ret.lo_address = C.lo_address_new(chost, cport)
-    fmt.Println("newaddress")
     runtime.SetFinalizer(ret, (*Address).Free)
-    fmt.Println("setfinalizer")
     return
 }
 
@@ -256,24 +250,29 @@ func (this *Address) Free() {
 type Message []Arg
  
 func (this Message) Send(targ *Address, path string) (ret int) {
+//    fmt.Printf("send %v\n", this)
     ret = this.SendTimestamped(targ, Now, path)
     return
 }
 
 func (this Message) SendTimestamped(targ *Address, time Timetag, path string) (ret int) {
     // build a new lo_message
+//    fmt.Printf("send timestamped %v %v\n", time, this)
     m, ret := this.build_lo_message()
     if m == nil {
+//        fmt.Printf("m nil ret %d\n", ret)
         return
     }
     if ret < 0 {
         C.lo_message_free(m)
+//        fmt.Printf("ret negative %d\n", ret)
         return
     }
     defer C.lo_message_free(m)
     s := C.CString(path)
     defer C.free(unsafe.Pointer(s))
     ret = int(C.lo_send_message(targ.lo_address, s, m))
+//    fmt.Printf("ret %d\n", ret)
     return
 }
 
@@ -283,40 +282,49 @@ func (this Message) build_lo_message() (m C.lo_message, ret int) {
         ret = -1
         return
     }
-    for _, arg := range *this {
+    for _, arg := range this {
+//        fmt.Printf("%d %s %v\n", n, arg.GetType(), arg.GetValue())
         switch arg.GetType() {
         case Int32:
-            ret = int(C.lo_message_add_int32(m, C.int32_t(arg.GetValue().(int32))))
+            ret = int(C.lo_message_add_int32(m, C.int32_t(arg.GetValue().(Int32Type))))
         case Float:
-            ret = int(C.lo_message_add_float(m, C.float(arg.GetValue().(float32))))
+            ret = int(C.lo_message_add_float(m, C.float(arg.GetValue().(FloatType))))
         case BlobCode:
             a, i := arg.GetValue().(Blob)
             if !i {
-                ret = -1
+                ret = -2
                 break
             }
             
-            b := C.lo_blob_new(C.int32_t(len(a)), unsafe.Pointer(&a))
+            b := C.lo_blob_new(C.int32_t(len(a)), unsafe.Pointer(&(a[0])))
             if b == nil {
-                ret = -1
+                ret = -3
                 break
             }
             defer C.lo_blob_free(C.lo_blob(b))
             ret = int(C.lo_message_add_blob(m, b))
         case Int64:
-            ret = int(C.lo_message_add_int64(m, C.int64_t(arg.GetValue().(int64))))
+            ret = int(C.lo_message_add_int64(m, C.int64_t(arg.GetValue().(Int64Type))))
         case TimetagCode:
             ret = int(C.lo_message_add_timetag(m, C.lo_timetag{arg.GetValue().(Timetag).Sec, arg.GetValue().(Timetag).Frac}))
         case Double:
-            ret = int(C.lo_message_add_double(m, C.double(arg.GetValue().(float64))))
+            ret = int(C.lo_message_add_double(m, C.double(arg.GetValue().(DoubleType))))
         case Symbol: 
-            s := C.CString(arg.GetValue().(string))
+            s := C.CString(string(arg.GetValue().(SymbolType)))
             if s == nil {
-                ret = -1
+                ret = -4
                 break
             }
             defer C.free(unsafe.Pointer(s))
             ret = int(C.lo_message_add_symbol(m, s))
+        case String:
+            s := C.CString(string(arg.GetValue().(StringType)))
+            if s == nil {
+                ret = -4
+                break
+            }
+            defer C.free(unsafe.Pointer(s))
+            ret = int(C.lo_message_add_string(m, s))            
         case Char:
             ret = int(C.lo_message_add_char(m, arg.GetValue().(C.char)))
         case MidiMsgCode:
@@ -331,7 +339,7 @@ func (this Message) build_lo_message() (m C.lo_message, ret int) {
         case Infinitum:
             ret = int(C.lo_message_add_infinitum(m))
         default:
-            ret = -1
+            ret = -5
         }
         if ret < 0 {
             C.lo_message_free(m)
