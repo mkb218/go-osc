@@ -360,7 +360,7 @@ type Bundle struct {
     MsgPaths []MsgPath
 }
 
-func (this *Bundle) Send(targ Address) (ret int) {
+func (this *Bundle) Send(targ *Address) (ret int) {
     ret = 0
     b := C.lo_bundle_new(C.lo_timetag{this.Time.Sec, this.Time.Frac})
     if b == nil {
